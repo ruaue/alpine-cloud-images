@@ -198,7 +198,7 @@ def install_qemu_firmware():
 
         firm_bin = os.path.join(firm_dir, f"uefi-{arch}.bin")
         os.symlink(bin, firm_bin)
-        if args.pad_uefi_bins:
+        if arch in args.pad_uefi_bin_arch:
             log.info('Padding "%s" to 67108864 bytes', firm_bin)
             subprocess.run(['truncate', '-s', '67108864', firm_bin])
 
@@ -213,8 +213,8 @@ parser.add_argument(
 parser.add_argument(
     '--clean', action='store_true', help='start with a clean work environment')
 parser.add_argument(
-    '--pad-uefi-bins', action=argparse.BooleanOptionalAction, default=True,
-    help='pad out UEFI firmware binaries to 64 MiB')
+    '--pad-uefi-bin-arch', metavar='ARCH', nargs='+', action=remove_dupe_args(),
+    default=['aarch64'], help='pad out UEFI firmware binaries to 64 MiB')
 # config options
 parser.add_argument(
     '--custom', metavar='DIR', nargs='+', action=are_args_valid(os.path.isdir),
