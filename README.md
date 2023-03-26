@@ -94,31 +94,39 @@ _We manage the credentials for publishing official Alpine images with an
 ### The `build` Script
 
 ```
-usage: build [-h] [--debug] [--clean] [--custom DIR [DIR ...]]
-         [--skip KEY [KEY ...]] [--only KEY [KEY ...]] [--revise] [--use-broker]
-         [--no-color] [--parallel N] [--vars FILE [FILE ...]]
-         {configs,state,local,import,publish}
+usage: build [-h] [--debug] [--clean] [--pad-uefi-bin-arch ARCH [ARCH ...]]
+         [--custom DIR [DIR ...]] [--skip KEY [KEY ...]] [--only KEY [KEY ...]]
+         [--revise] [--use-broker] [--no-color] [--parallel N]
+         [--vars FILE [FILE ...]]
+         {configs,state,rollback,local,upload,import,publish,release}
 
 positional arguments:   (build up to and including this step)
   configs   resolve image build configuration
   state     refresh current image build state
+  rollback  remove existing local/uploaded/imported images if un-published/released
   local     build images locally
-  import    import local images to cloud provider default region
-  publish   set image permissions and publish to cloud regions
+  upload    upload images and metadata to storage
+* import    import local images to cloud provider default region (*)
+* publish   set image permissions and publish to cloud regions (*)
+  release   mark images as being officially relased
+
+(*) may not apply to or be implemented for all cloud providers
 
 optional arguments:
   -h, --help              show this help message and exit
   --debug                 enable debug output
   --clean                 start with a clean work environment
+  --pad-uefi-bin-arch ARCH [ARCH ...]
+                          pad out UEFI firmware to 64 MiB ('aarch64')
   --custom DIR [DIR ...]  overlay custom directory in work environment
   --skip KEY [KEY ...]    skip variants with dimension key(s)
   --only KEY [KEY ...]    only variants with dimension key(s)
-  --revise                remove existing local/imported image, or bump
-                          revision and rebuild if published
+  --revise                remove existing local/uploaded/imported images if
+                          un-published/released, or bump revision and rebuild
   --use-broker            use the identity broker to get credentials
   --no-color              turn off Packer color output
-  --parallel N            build N images in parallel (default: 1)
-  --vars FILE [FILE ...]  supply Packer with -vars-file(s)
+  --parallel N            build N images in parallel
+  --vars FILE [FILE ...]  supply Packer with -vars-file(s) (default: [])
 ```
 
 The `build` script will automatically create a `work/` directory containing a
@@ -145,21 +153,32 @@ it to `work/images.yaml`, if it does not already exist.
 The `state` step always checks the current state of the image builds,
 determines what actions need to be taken, and updates `work/images.yaml`.  A
 subset of image builds can be targeted by using the `--skip` and `--only`
-arguments.  The `--revise` argument indicates that any _unpublished_ local
-or imported images should be removed and rebuilt; as _published_ images can't
-be removed, `--revise` instead increments the _`revision`_ value to rebuild
-new images.
+arguments.
 
-`local`, `import`, and `publish` steps are orchestrated by Packer.  By default,
-each image will be processed serially; providing the `--parallel` argument with
-a value greater than 1 will parallelize operations.  The degree to which you
-can parallelze `local` image builds will depend on the local build hardware --
-as QEMU virtual machines are launched for each image being built.  Image
-`import` and `publish` steps are much more lightweight, and can support higher
-parallelism.
+The `rollback` step, when used with `--revise` argument indicates that any
+_unpublished_ and _unreleased_ local, imported, or uploaded images should be
+removed and rebuilt.
+
+As _published_ and _released_ images can't be removed, `--revise` can be used
+with `configs` or `state` to increment the _`revision`_ value to rebuild newly
+revised images.
+
+`local`, `upload`, `import`, `publish`, and `release` steps are orchestrated by
+Packer.  By default, each image will be processed serially; providing the
+`--parallel` argument with a value greater than 1 will parallelize operations.
+The degree to which you can parallelze `local` image builds will depend on the
+local build hardware -- as QEMU virtual machines are launched for each image
+being built.  Image `upload`, `import`, `publish`, and `release` steps are much
+more lightweight, and can support higher parallelism.
 
 The `local` step builds local images with QEMU, for those that are not already
-built locally or have already been imported.
+built locally or have already been imported.  Images are converted to formats
+amenable for import into the cloud provider (if necessary) and checksums are
+generated.
+
+The `upload` step uploads the local image, checksum, and metadata to the
+defined `storage_url`.  The `import`, `publish`, and `release` steps will
+also upload updated image metadata.
 
 The `import` step imports the local images into the cloud providers' default
 regions, unless they've already been imported.  At this point the images are
@@ -170,10 +189,16 @@ if they haven't already been copied there.  This step will always update
 image permissions, descriptions, tags, and deprecation date (if applicable)
 in all regions where the image has been published.
 
+***NOTE:***  The `import` and `publish` steps are skipped for those cloud
+providers where this does not make sense (i.e.  NoCloud) or for those which
+it has not yet been coded.
+
+The `release` step marks the images as being fully released.
+
 ### The `cloud_helper.py` Script
 
 This script is meant to be called only by Packer from its `post-processor`
-block for image `import` and `publish` steps.
+block.
 
 ----
 ## Build Configuration

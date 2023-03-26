@@ -27,7 +27,7 @@ class CloudAdapterInterface:
     def session(self, region=None):
         raise NotImplementedError
 
-    def latest_build_image(self, project, image_key):
+    def get_latest_imported_tags(self, project, image_key):
         raise NotImplementedError
 
     def import_image(self, config):

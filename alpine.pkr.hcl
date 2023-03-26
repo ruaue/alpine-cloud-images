@@ -31,7 +31,7 @@ variable "qemu" {
 locals {
   # possible actions for the post-processor
   actions = [
-    "build", "upload", "import", "publish", "release"
+    "local", "upload", "import", "publish", "release"
   ]
 
   debug_arg   = var.DEBUG == 0 ? "" : "--debug"
@@ -85,7 +85,7 @@ build {
   # QEMU builder
   dynamic "source" {
     for_each = { for b, c in local.configs:
-        b => c if contains(c.actions, "build")
+        b => c if contains(c.actions, "local")
       }
     iterator = B
     labels = ["qemu.alpine"]  # links us to the base source
@@ -112,10 +112,10 @@ build {
     }
   }
 
-  # Null builder (don't build, but we might import and/or publish)
+  # Null builder (don't build, but we might do other actions)
   dynamic "source" {
     for_each = { for b, c in local.configs:
-        b => c if !contains(c.actions, "build")
+        b => c if !contains(c.actions, "local")
       }
     iterator = B
     labels = ["null.alpine"]
@@ -129,7 +129,7 @@ build {
   # install setup files
   dynamic "provisioner" {
     for_each = { for b, c in local.configs:
-        b => c if contains(c.actions, "build")
+        b => c if contains(c.actions, "local")
       }
     iterator = B
     labels = ["file"]
@@ -144,7 +144,7 @@ build {
   # run setup scripts
   dynamic "provisioner" {
     for_each = { for b, c in local.configs:
-        b => c if contains(c.actions, "build")
+        b => c if contains(c.actions, "local")
       }
     iterator = B
     labels = ["shell"]

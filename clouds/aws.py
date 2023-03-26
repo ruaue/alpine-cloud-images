@@ -4,13 +4,13 @@
 import logging
 import hashlib
 import os
+import subprocess
 import time
 
 from datetime import datetime
-from subprocess import run
 
 from .interfaces.adapter import CloudAdapterInterface
-from image_configs import Tags, DictObj
+from image_tags import DictObj, ImageTags
 
 
 class AWSCloudAdapter(CloudAdapterInterface):
@@ -38,7 +38,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
             try:
                 import boto3
             except ModuleNotFoundError:
-                run(['work/bin/pip', 'install', '-U', 'boto3'])
+                subprocess.run(['work/bin/pip', 'install', '-U', 'boto3'])
                 import boto3
 
             self._sdk = boto3
@@ -91,19 +91,20 @@ class AWSCloudAdapter(CloudAdapterInterface):
             ec2r.images.filter(**req), key=lambda k: k.creation_date, reverse=True)
 
     # necessary cloud-agnostic image info
+    # TODO: still necessary?  maybe just incoroporate into new latest_imported_tags()?
     def _image_info(self, i):
-        tags = Tags(from_list=i.tags)
+        tags = ImageTags(from_list=i.tags)
         return DictObj({k: tags.get(k, None) for k in self.IMAGE_INFO})
 
-    # get the latest imported image for a given build name
-    def latest_build_image(self, project, image_key):
+    # get the latest imported image's tags for a given build key
+    def get_latest_imported_tags(self, project, image_key):
         images = self._get_images_with_tags(
             project=project,
             image_key=image_key,
         )
         if images:
             # first one is the latest
-            return self._image_info(images[0])
+            return ImageTags(from_list=images[0].tags)
 
         return None
 
@@ -228,7 +229,9 @@ class AWSCloudAdapter(CloudAdapterInterface):
             snapshot.delete()
             raise
 
-        return self._image_info(image)
+        # update ImageConfig with imported tag values, minus special AWS 'Name'
+        tags.pop('Name', None)
+        ic.__dict__ |= tags
 
     # delete an (unpublished) image
     def delete_image(self, image_id):
@@ -245,7 +248,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
     # publish an image
     def publish_image(self, ic):
         log = logging.getLogger('publish')
-        source_image = self.latest_build_image(
+        source_image = self.get_latest_imported_tags(
             ic.project,
             ic.image_key,
         )
@@ -330,7 +333,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
                     if image.state == 'available':
                         # tag image
                         log.info('%s: Adding tags to %s', r, image.id)
-                        image_tags = Tags(from_list=image.tags)
+                        image_tags = ImageTags(from_list=image.tags)
                         fresh = False
                         if 'published' not in image_tags:
                             fresh = True
@@ -387,7 +390,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
                 time.sleep(copy_wait)
                 copy_wait = 30
 
-        return artifacts
+        ic.artifacts = artifacts
 
 
 def register(cloud, cred_provider=None):

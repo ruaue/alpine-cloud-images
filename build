@@ -43,7 +43,7 @@ from urllib.request import urlopen
 
 import clouds
 from alpine import Alpine
-from image_configs import ImageConfigManager
+from image_config_manager import ImageConfigManager
 
 
 ### Constants & Variables
@@ -267,8 +267,7 @@ if args.use_broker:
 ### Setup Configs
 
 latest = alpine.version_info()
-log.info('Latest Alpine version %s and release %s', latest['version'], latest['release'])
-log.info('Latest Alpine release notes: %s', latest['notes'])
+log.info('Latest Alpine version %s, release %s, and notes: %s', latest['version'], latest['release'], latest['notes'])
 if args.clean:
     clean_work()
 
@@ -340,6 +339,7 @@ if p.returncode != 0:
 log.info('Packer Completed')
 
 # update final state in work/images.yaml
+# TODO: do we need to do all of this or just save all the image_configs?
 image_configs.refresh_state(
     step='final',
     only=args.only,

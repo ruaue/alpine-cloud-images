@@ -38,7 +38,7 @@ from collections import defaultdict
 from ruamel.yaml import YAML
 
 import clouds
-from image_configs import ImageConfigManager
+from image_config_manager import ImageConfigManager
 
 
 ### Constants & Variables
@@ -162,7 +162,8 @@ for i_key, i_cfg in configs.get().items():
             }
             versions[version]['images'][image_name]['downloads'][cloud] |= {
                 'cloud': cloud,
-                'image_url':  i_cfg.download_url,
+                'image_format': i_cfg.image_format,
+                'image_url':  i_cfg.download_url + '/' + (i_cfg.image_name)
             }
             versions[version]['images'][image_name]['regions'][region] |= {
                 'cloud': cloud,

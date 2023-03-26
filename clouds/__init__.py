@@ -25,8 +25,9 @@ def set_credential_provider(debug=False):
 
 ### forward to the correct adapter
 
-def latest_build_image(config):
-    return ADAPTERS[config.cloud].latest_build_image(
+# TODO: latest_imported_tags(...)
+def get_latest_imported_tags(config):
+    return ADAPTERS[config.cloud].get_latest_imported_tags(
         config.project,
         config.image_key
     )
