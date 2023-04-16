@@ -302,3 +302,8 @@ access is granted, `true` or `false`/`null`.
 Determines where images should be published.  The key is the region
 identifier (or `ALL`), and the value is whether or not to publish to that
 region, `true` or `false`/`null`.
+
+### `encrypted` string
+
+Determines whether the image will be encrypted when imported and published.
+Currently, only the **aws** cloud module supports this.
