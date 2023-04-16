@@ -26,6 +26,18 @@ case "$CLOUD" in
     aws)
         DATASOURCE="Ec2"
         ;;
+    nocloud)
+        DATASOURCE="NoCloud"
+        ;;
+    azure)
+        DATASOURCE="Azure"
+        ;;
+    gcp)
+        DATASOURCE="GCE"
+        ;;
+    oci)
+        DATASOURCE="Oracle"
+        ;;
     *)
         echo "Unsupported Cloud '$CLOUD'" >&2
         exit 1
