@@ -174,6 +174,7 @@ build {
         "PACKAGES_NOSCRIPTS=${B.value.packages.noscripts}",
         "RELEASE=${B.value.release}",
         "REPOS=${B.value.repos}",
+        "REPO_KEYS=${B.value.repo_keys}",
         "SERVICES_ENABLE=${B.value.services.enable}",
         "SERVICES_DISABLE=${B.value.services.disable}",
         "VERSION=${B.value.version}",

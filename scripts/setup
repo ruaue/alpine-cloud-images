@@ -71,6 +71,12 @@ install_base() {
     mkdir -p "$TARGET/etc/apk"
     echo "$REPOS" > "$TARGET/etc/apk/repositories"
     cp -a /etc/apk/keys "$TARGET/etc/apk"
+
+    # shellcheck disable=SC2086
+    for key in $REPO_KEYS; do
+        wget -q $key -P "$TARGET/etc/apk/keys"
+    done
+
     # shellcheck disable=SC2086
     apk --root "$TARGET" --initdb --no-cache add $PACKAGES_ADD
     # shellcheck disable=SC2086

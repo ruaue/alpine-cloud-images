@@ -307,3 +307,8 @@ region, `true` or `false`/`null`.
 
 Determines whether the image will be encrypted when imported and published.
 Currently, only the **aws** cloud module supports this.
+
+### `repo_keys` array
+
+List of addtional repository keys to trust during the package installation phase.
+This allows pulling in custom apk packages by simple specifying the repository name in packages block.

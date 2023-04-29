@@ -151,6 +151,7 @@ class ImageConfig():
         # stringify arrays
         self.name = '-'.join(self.name)
         self.description = ' '.join(self.description)
+        self.repo_keys = ' '.join(self.repo_keys)
         self._resolve_motd()
         self._resolve_urls()
         self._stringify_repos()
