@@ -15,7 +15,11 @@ if [ "$VERSION" = "3.12" ]; then
     echo "EC2_USER=$IMAGE_LOGIN" > /etc/conf.d/tiny-ec2-bootstrap
 else
     einfo "Configuring Tiny Cloud..."
-    sed -i.bak -Ee "s/^#?CLOUD_USER=.*/CLOUD_USER=$IMAGE_LOGIN/" \
-        "$TARGET"/etc/conf.d/tiny-cloud
-    rm "$TARGET"/etc/conf.d/tiny-cloud.bak
+
+    TC_CONF="$TARGET/etc/tiny-cloud.conf"
+    # tiny-cloud >= 3.0.0 moved configs, the following supports older versions
+    [ ! -f "$TC_CONF" ] && TC_CONF="$TARGET/etc/conf.d/tiny-cloud"
+
+    sed -i.bak -Ee "s/^#?CLOUD_USER=.*/CLOUD_USER=$IMAGE_LOGIN/" "$TC_CONF"
+    rm "$TC_CONF.bak"
 fi
