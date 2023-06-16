@@ -56,7 +56,10 @@ make_filesystem() {
         mkfs.fat -n EFI "${DEVICE}1"
     fi
 
-    mkfs.ext4 -O ^64bit -L / "$root_dev"
+    # before Alpine 3.18...
+    # - grub2 can't handle "metadata_csum_seed"
+    # - fsck can't handle "orphan_file"
+    mkfs.ext4 -O ^64bit,^metadata_csum_seed,^orphan_file -L / "$root_dev"
     mkdir -p "$TARGET"
     mount -t ext4 "$root_dev" "$TARGET"
 
