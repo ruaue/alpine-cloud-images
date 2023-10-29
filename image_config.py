@@ -28,6 +28,15 @@ class ImageConfig():
     STEPS = [
         'local', 'upload', 'import', 'publish', 'release'
     ]
+    # we expect these to be available
+    DEFAULT_OBJ = {
+        'built': None,
+        'uploaded': None,
+        'imported': None,
+        'published': None,
+        'released': None,
+        'artifacts': None,
+    }
 
     def __init__(self, config_key, obj={}, log=None, yaml=None):
         self._log = log
@@ -35,7 +44,7 @@ class ImageConfig():
         self._storage = None
         self.config_key = str(config_key)
         tags = obj.pop('tags', None)
-        self.__dict__ |= self._deep_dict(obj)
+        self.__dict__ |= self.DEFAULT_OBJ | self._deep_dict(obj)
         # ensure tag values are str() when loading
         if tags:
             self.tags = tags
@@ -266,14 +275,18 @@ class ImageConfig():
 
         return self.STEPS.index(s) <= self.STEPS.index(step)
 
+    def load_local_metadata(self):
+        metadata_path = self.local_dir / self.metadata_file
+        if metadata_path.exists():
+            self._log.debug('Loading image metadata from %s', metadata_path)
+            loaded = self._yaml.load(metadata_path)
+            loaded.pop('name', None)    # don't overwrite 'name' format string!
+            loaded.pop('Name', None)    # remove special AWS tag
+            self.__dict__ |= loaded
 
-    # TODO: this needs to be sorted out for 'upload' and 'release' steps
     def refresh_state(self, step, revise=False):
         log = self._log
         actions = {}
-        revision = 0
-        step_state = step == 'state'
-        step_rollback = step == 'rollback'
         undo = {}
 
         # enable initial set of possible actions based on specified step
@@ -281,93 +294,61 @@ class ImageConfig():
             if self._is_step_or_earlier(s, step):
                 actions[s] = True
 
-        # pick up any updated image metadata
-        self.load_metadata()
+        # sets the latest revision metadata (from storage and local)
+        self.load_metadata(step)
 
-        # TODO: check storage and/or cloud - use this instead of remote_image
-        # latest_revision = self.get_latest_revision()
+        # if we're rolling back, figure out what we need to undo first
+        if step == 'rollback':
+            if self.released or self.published:
+                undo['ROLLBACK_BLOCKED'] = True
 
-        if (step_rollback or revise) and self.local_image.exists():
-            undo['local'] = True
+            else:
+                if self.imported and 'import' in clouds.actions(self):
+                    undo['import'] = True
+                    self.imported = None
 
-
-
-        if step_rollback:
-            if self.local_image.exists():
-                undo['local'] = True
-
-            if not self.published or self.released:
                 if self.uploaded:
                     undo['upload'] = True
+                    self.uploaded = None
 
-                if self.imported:
-                    undo['import'] = True
+                if self.built and self.local_dir.exists():
+                    undo['local'] = True
+                    self.built = None
 
-        # TODO: rename to 'remote_tags'?
-        # if we load remote tags into state automatically, shouldn't that info already be in self?
-        remote_image = clouds.get_latest_imported_tags(self)
-        log.debug('\n%s', remote_image)
+        # handle --revise option, if necessary
+        if revise and (self.published or self.released):
+            # get rid of old metadata
+            (self.local_dir / self.metadata_file).unlink()
+            self.revision = int(self.revision) + 1
+            self.__dict__ |= self.DEFAULT_OBJ
+            self.__dict__.pop('import_id', None)
+            self.__dict__.pop('import_region', None)
 
-        if revise:
-            if self.local_image.exists():
-                # remove previously built local image artifacts
-                log.warning('%s existing local image dir %s',
-                    'Would remove' if step_state else 'Removing',
-                    self.local_dir)
-                if not step_state:
-                    shutil.rmtree(self.local_dir)
+            # do we already have it built locally?
+            if self.image_path.exists():
+                # then we should use its metadata
+                self.load_local_metadata()
 
-            if remote_image and remote_image.get('published', None):
-                log.warning('%s image revision for %s',
-                    'Would bump' if step_state else 'Bumping',
-                    self.image_key)
-                revision = int(remote_image.revision) + 1
+            else:
+                undo['local'] = True
 
-            elif remote_image and remote_image.get('imported', None):
-                # remove existing imported (but unpublished) image
-                log.warning('%s unpublished remote image %s',
-                    'Would remove' if step_state else 'Removing',
-                    remote_image.import_id)
-                if not step_state:
-                    clouds.delete_image(self, remote_image.import_id)
-
-            remote_image = None
-
-        elif remote_image:
-            if remote_image.get('imported', None):
-                # already imported, don't build/upload/import again
-                log.debug('%s - already imported', self.image_key)
-                actions.pop('local', None)
-                actions.pop('upload', None)
-                actions.pop('import', None)
-
-            if remote_image.get('published', None):
-                # NOTE: re-publishing can update perms or push to new regions
-                log.debug('%s - already published', self.image_key)
-
-        if self.local_image.exists():
-            # local image's already built, don't rebuild
-            log.debug('%s - already locally built', self.image_key)
+        # after all that, let's figure out what's to be done!
+        if self.built:
             actions.pop('local', None)
 
-        else:
-            self.built = None
+        if self.uploaded:
+            actions.pop('upload', None)
 
-        # merge remote_image data into image state
-        if remote_image:
-            self.__dict__ |= dict(remote_image)
+        if self.imported or 'import' not in clouds.actions(self):
+            actions.pop('import', None)
 
-        else:
-            self.__dict__ |= {
-                'revision': revision,
-                'uploaded': None,
-                'imported': None,
-                'import_id': None,
-                'import_region': None,
-                'published': None,
-                'artifacts': None,
-                'released': None,
-            }
+        # NOTE: always publish (if cloud allows) to support new regions
+        if 'publish' not in clouds.actions(self):
+            actions.pop('publish', None)
+
+        # don't re-publish again if we're targeting the release step
+        elif step == 'release' and self.published:
+            actions.pop('publish', None)
 
         # remove remaining actions not possible based on specified step
         for s in self.STEPS:
@@ -375,7 +356,26 @@ class ImageConfig():
                 actions.pop(s, None)
 
         self.actions = list(actions)
-        log.info('%s/%s = %s', self.cloud, self.image_name, self.actions)
+        log.info('%s/%s = [%s]', self.cloud, self.image_name, ' '.join(self.actions))
+
+        if undo:
+            act = "Would undo" if step == 'state' else "Undoing"
+            log.warning('%s: [%s]', act, ' '.join(undo.keys()))
+
+        if step != 'state':
+            if 'import' in undo:
+                log.warning('Deleting imported image: %s', self.import_id)
+                clouds.delete_image(self, self.import_id)
+                self.import_id = None
+                self.import_region = None
+
+            if 'upload' in undo:
+                log.warning('Removing uploaded image from storage')
+                self.remove_image()
+
+            if 'local' in undo:
+                log.warning('Removing local build directory')
+                shutil.rmtree(self.local_dir)
 
         self.state_updated = datetime.utcnow().isoformat()
 
@@ -388,15 +388,10 @@ class ImageConfig():
 
     def _save_checksum(self, file):
         self._log.info("Calculating checksum for '%s'", file)
-        sha256_hash = hashlib.sha256()
         sha512_hash = hashlib.sha512()
         with open(file, 'rb') as f:
             for block in iter(lambda: f.read(4096), b''):
-                sha256_hash.update(block)
                 sha512_hash.update(block)
-
-        with open(str(file) + '.sha256', 'w') as f:
-            print(sha256_hash.hexdigest(), file=f)
 
         with open(str(file) + '.sha512', 'w') as f:
             print(sha512_hash.hexdigest(), file=f)
@@ -415,16 +410,30 @@ class ImageConfig():
     def upload_image(self):
         self.storage.store(
             self.image_file,
-            self.image_file + '.sha256',
             self.image_file + '.sha512'
         )
         self.uploaded = datetime.utcnow().isoformat()
 
+    def retrieve_image(self):
+        self._log.info('Retrieving %s from storage', self.image_file)
+        self.storage.retrieve(
+            self.image_file
+        )
+
+    def remove_image(self):
+        self.storage.remove(
+            self.image_file,
+            self.image_file + '.sha512',
+            self.metadata_file,
+            self.metadata_file + '.sha512'
+        )
+
+    def release_image(self):
+        self.released = datetime.utcnow().isoformat()
+
     def save_metadata(self, action):
         os.makedirs(self.local_dir, exist_ok=True)
         self._log.info('Saving image metadata')
-        # TODO: save metadata updated timestamp as metadata?
-        # TODO: def self.metadata to return what we consider metadata?
         metadata = dict(self.tags)
         self.metadata_updated = datetime.utcnow().isoformat()
         metadata |= {
@@ -437,29 +446,36 @@ class ImageConfig():
         if action != 'local' and self.storage:
             self.storage.store(
                 self.metadata_file,
-                self.metadata_file + '.sha256',
                 self.metadata_file + '.sha512'
             )
 
-    def load_metadata(self):
-        # TODO: what if we have fresh configs, but the image is already uploaded/imported?
-        # we'll need to get revision first somehow
-        if 'revision' not in self.__dict__:
-            return
+    def load_metadata(self, step):
+        new = True
+        if step != 'final':
+            # what's the latest uploaded revision?
+            revision_glob = self.name.format(**(self.__dict__ | {'revision': '*'}))
+            try:
+                revision_yamls = self.storage.list(revision_glob + '.yaml', err_ok=True)
+                new = not revision_yamls    # empty list is still new
 
-        # TODO: revision = '*' for now - or only if unknown?
+            except RuntimeError:
+                pass
 
-        # get a list of local matching <name>-r*.yaml?
+            latest_revision = 0
+            if not new:
+                for y in revision_yamls:
+                    yr = int(y.rstrip('.yaml').rsplit('r', 1)[1])
+                    if yr > latest_revision:
+                        latest_revision = yr
+
+            self.revision = latest_revision
+
         metadata_path = self.local_dir / self.metadata_file
-        if metadata_path.exists():
-            self._log.info('Loading image metadata from %s', metadata_path)
-            self.__dict__ |= self._yaml.load(metadata_path).items()
+        if step != 'final' and not new and not metadata_path.exists():
+            try:
+                self.storage.retrieve(self.metadata_file)
+            except RuntimeError as e:
+                # TODO: don't we already log an error/warning?
+                self._log.warning(f'Unable to retrieve from storage: {metadata_path}')
 
-        # get a list of storage  matching <name>-r*.yaml
-        #else:
-            # retrieve metadata (and image?) from storage_url
-            # else:
-                # retrieve metadata from imported image
-
-        # if there's no stored metadata, we are in transition,
-        #   get a list of imported images matching <name>-r*.yaml
+        self.load_local_metadata()  # if it exists

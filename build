@@ -228,8 +228,8 @@ parser.add_argument(
     default=[], help='only variants with dimension key(s)')
 parser.add_argument(
     '--revise', action='store_true',
-    help='remove existing local/uploaded/imported image, or bump revision and '
-        ' rebuild if published or released')
+    help='bump revision and rebuild if published or released')
+    # --revise is not needed after new revision is uploaded
 parser.add_argument(
     '--use-broker', action='store_true',
     help='use the identity broker to get credentials')
@@ -256,9 +256,9 @@ console.setFormatter(logfmt)
 log.addHandler(console)
 log.debug(args)
 
-if args.step == 'rollback':
-    log.warning('"rollback" step enables --revise option')
-    args.revise = True
+if args.step == 'rollback' and args.revise:
+    log.error('"rollback" step does not support --revise option')
+    sys.exit(1)
 
 # set up credential provider, if we're going to use it
 if args.use_broker:
@@ -292,7 +292,7 @@ if not image_configs.refresh_state(
     log.info('No pending actions to take at this time.')
     sys.exit(0)
 
-if args.step == 'state' or args.step == 'rollback':
+if args.step == 'state':
     sys.exit(0)
 
 # install firmware if missing
@@ -339,7 +339,6 @@ if p.returncode != 0:
 log.info('Packer Completed')
 
 # update final state in work/images.yaml
-# TODO: do we need to do all of this or just save all the image_configs?
 image_configs.refresh_state(
     step='final',
     only=args.only,

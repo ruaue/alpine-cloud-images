@@ -76,23 +76,26 @@ yaml.explicit_start = True
 
 for image_key in args.image_keys:
     image_config = configs.get(image_key)
+    image_config.load_local_metadata()  # if it exists
 
     if args.action == 'local':
         image_config.convert_image()
 
     elif args.action == 'upload':
-        if image_config.storage:
-            image_config.upload_image()
+        image_config.upload_image()
 
-    elif args.action == 'import':
+    elif args.action == 'import' and 'import' in clouds.actions(image_config):
+        # if we don't have the image locally, retrieve it from storage
+        if not image_config.image_path.exists():
+            image_config.retrieve_image()
+
         clouds.import_image(image_config)
 
-    elif args.action == 'publish':
+    elif args.action == 'publish' and 'publish' in clouds.actions(image_config):
         clouds.publish_image(image_config)
 
     elif args.action == 'release':
-        pass
-        # TODO: image_config.release_image() - configurable steps to take on remote host
+        image_config.release_image()
 
     # save per-image metadata
     image_config.save_metadata(args.action)

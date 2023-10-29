@@ -1,7 +1,8 @@
-*~
-*.bak
-*.swp
+**/*~
+**/*.bak
+**/*.swp
 .DS_Store
 .vscode/
 /work/
 releases*yaml
+/*.yaml

@@ -30,6 +30,10 @@ class AWSCloudAdapter(CloudAdapterInterface):
         'bios': 'legacy-bios',
         'uefi': 'uefi',
     }
+    ACTIONS = [
+        'import',
+        'publish',
+    ]
 
     @property
     def sdk(self):
@@ -96,6 +100,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
         tags = ImageTags(from_list=i.tags)
         return DictObj({k: tags.get(k, None) for k in self.IMAGE_INFO})
 
+    # TODO: deprectate/remove
     # get the latest imported image's tags for a given build key
     def get_latest_imported_tags(self, project, image_key):
         images = self._get_images_with_tags(
@@ -222,6 +227,10 @@ class AWSCloudAdapter(CloudAdapterInterface):
             tags.import_id = image_id
             tags.import_region = ec2c.meta.region_name
             image.create_tags(Tags=tags.as_list())
+            # update image config with import information
+            ic.imported = tags.imported
+            ic.import_id = tags.import_id
+            ic.import_region = tags.import_region
         except Exception:
             log.error('Unable to tag image:', exc_info=True)
             log.info('Removing image and snapshot')
@@ -229,9 +238,6 @@ class AWSCloudAdapter(CloudAdapterInterface):
             snapshot.delete()
             raise
 
-        # update ImageConfig with imported tag values, minus special AWS 'Name'
-        tags.pop('Name', None)
-        ic.__dict__ |= tags
 
     # delete an (unpublished) image
     def delete_image(self, image_id):
@@ -390,7 +396,9 @@ class AWSCloudAdapter(CloudAdapterInterface):
                 time.sleep(copy_wait)
                 copy_wait = 30
 
+        # update image config with published information
         ic.artifacts = artifacts
+        ic.published = datetime.utcnow().isoformat()
 
 
 def register(cloud, cred_provider=None):

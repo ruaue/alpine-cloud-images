@@ -117,8 +117,6 @@ for i_key, i_cfg in configs.get().items():
             'cloud_name': i_cfg.cloud_name,
         }
 
-    filters['regions'] = {}
-
     if arch not in filters['archs']:
         filters['archs'][arch] = {
             'arch': arch,
@@ -137,9 +135,31 @@ for i_key, i_cfg in configs.get().items():
             'bootstrap_name': i_cfg.bootstrap_name,
         }
 
-    if i_cfg.artifacts:
+    versions[version] |= {
+        'version': version,
+        'release': release,
+        'end_of_life': i_cfg.end_of_life,
+    }
+    versions[version]['images'][image_name] |= {
+        'image_name': image_name,
+        'arch': arch,
+        'firmware': firmware,
+        'bootstrap': bootstrap,
+        'published': i_cfg.published.split('T')[0],     # just the date
+    }
+    versions[version]['images'][image_name]['downloads'][cloud] |= {
+        'cloud': cloud,
+        'image_format': i_cfg.image_format,
+        'image_url':  i_cfg.download_url + '/' + (i_cfg.image_name)
+    }
+
+    # TODO: not all clouds will have artifacts
+    if i_cfg._get('artifacts'):
+        log.debug("ARTIFACTS: %s", i_cfg.artifacts)
         for region, image_id in {r: i_cfg.artifacts[r] for r in sorted(i_cfg.artifacts)}.items():
+            log.debug("REGION: %s", region)
             if region not in filters['regions']:
+                log.debug("not in filters['region']")
                 filters['regions'][region] = {
                     'region': region,
                     'clouds': [cloud],
@@ -148,23 +168,6 @@ for i_key, i_cfg in configs.get().items():
             if cloud not in filters['regions'][region]['clouds']:
                 filters['regions'][region]['clouds'].append(cloud)
 
-            versions[version] |= {
-                'version': version,
-                'release': release,
-                'end_of_life': i_cfg.end_of_life,
-            }
-            versions[version]['images'][image_name] |= {
-                'image_name': image_name,
-                'arch': arch,
-                'firmware': firmware,
-                'bootstrap': bootstrap,
-                'published': i_cfg.published.split('T')[0],     # just the date
-            }
-            versions[version]['images'][image_name]['downloads'][cloud] |= {
-                'cloud': cloud,
-                'image_format': i_cfg.image_format,
-                'image_url':  i_cfg.download_url + '/' + (i_cfg.image_name)
-            }
             versions[version]['images'][image_name]['regions'][region] |= {
                 'cloud': cloud,
                 'region': region,
@@ -199,7 +202,7 @@ for version in sorted(versions, reverse=True, key=lambda s: [int(u) for u in s.s
 
         images[image_name]['downloads'] = d
 
-        regions = images[image_name].pop('regions')
+        regions = images[image_name].pop('regions', [])
         r = []
         for region in sorted(regions):
             r.append(regions[region])

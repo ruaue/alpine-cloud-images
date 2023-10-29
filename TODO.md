@@ -1,7 +1,4 @@
-* save uploaded to metadata after uploading
-* make storage authoritative for state
-* self.storage.get_latest_published (or released)
-* don't upload if we've already uploaded
-* don't import/publish if the cloud provider can't do that.
-* release generates releases.yaml, sets "released"
-* make sure --revise does the right thing
+* clean up cloud modules now that `get_latest_imported_tags` isn't needed
+
+* do we still need to set `ntp_server` for AWS images, starting with 3.18.4?
+  _(or is this now handled via `dhcpcd`?)_

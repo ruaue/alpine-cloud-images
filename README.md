@@ -32,10 +32,13 @@ tagged on the images...
 | bootstrap | initial bootstrap system (`tiny` = Tiny Cloud) |
 | cloud | provider short name (`aws`) |
 | revision | image revision number |
+| built | image build timestamp |
+| uploaded | image storage timestamp |
 | imported | image import timestamp |
 | import_id | imported image id |
 | import_region | imported image region |
 | published | image publication timestamp |
+| released | image release timestamp _(won't be set until second publish)_ |
 | description | image description |
 
 Although AWS does not allow cross-account filtering by tags, the image name can
@@ -61,12 +64,22 @@ To get just the most recent matching image, use...
 
 The build system consists of a number of components:
 
-* the primary `build` script
+* the primary `build` script, and other related libararies...
+  * `clouds/` - specific cloud provider plugins
+  * `alpine.py` - for getting the latest Alpine information
+  * `image_config_manager.py` - manages collection of image configs
+  * `image_config.py` - individual image config functionality
+  * `image_storage.py` - persistent image/metadata storage
+  * `image_tags.py` - classes for working with image tags
+
 * the `configs/` directory, defining the set of images to be built
+
 * the `scripts/` directory, containing scripts and related data used to set up
   image contents during provisioning
+
 * the Packer `alpine.pkr.hcl`, which orchestrates build, import, and publishing
   of images
+
 * the `cloud_helper.py` script that Packer runs in order to do cloud-specific
   import and publish operations
 
@@ -102,8 +115,8 @@ usage: build [-h] [--debug] [--clean] [--pad-uefi-bin-arch ARCH [ARCH ...]]
 
 positional arguments:   (build up to and including this step)
   configs   resolve image build configuration
-  state     refresh current image build state
-  rollback  remove existing local/uploaded/imported images if un-published/released
+  state     report current build state of images
+  rollback  remove local/uploaded/imported images if not published or released
   local     build images locally
   upload    upload images and metadata to storage
 * import    import local images to cloud provider default region (*)
@@ -121,8 +134,7 @@ optional arguments:
   --custom DIR [DIR ...]  overlay custom directory in work environment
   --skip KEY [KEY ...]    skip variants with dimension key(s)
   --only KEY [KEY ...]    only variants with dimension key(s)
-  --revise                remove existing local/uploaded/imported images if
-                          un-published/released, or bump revision and rebuild
+  --revise                bump revision and rebuild if published or released
   --use-broker            use the identity broker to get credentials
   --no-color              turn off Packer color output
   --parallel N            build N images in parallel
@@ -155,13 +167,11 @@ determines what actions need to be taken, and updates `work/images.yaml`.  A
 subset of image builds can be targeted by using the `--skip` and `--only`
 arguments.
 
-The `rollback` step, when used with `--revise` argument indicates that any
-_unpublished_ and _unreleased_ local, imported, or uploaded images should be
-removed and rebuilt.
+The `rollback` step will remove any imported, uploaded, or local images, but
+only if they are _unpublished_ and _unreleased_.
 
-As _published_ and _released_ images can't be removed, `--revise` can be used
-with `configs` or `state` to increment the _`revision`_ value to rebuild newly
-revised images.
+As _published_ and _released_ images can't be rolled back, `--revise` can be
+used to increment the _`revision`_ value to rebuild newly revised images.
 
 `local`, `upload`, `import`, `publish`, and `release` steps are orchestrated by
 Packer.  By default, each image will be processed serially; providing the
@@ -193,7 +203,9 @@ in all regions where the image has been published.
 providers where this does not make sense (i.e.  NoCloud) or for those which
 it has not yet been coded.
 
-The `release` step marks the images as being fully released.
+The `release` step simply marks the images as being fully released.  _(For the
+offical Alpine releases, we have a `gen_mksite_release.py` script to convert
+the image data to a format that can be used by https://alpinelinux.org/cloud.)_
 
 ### The `cloud_helper.py` Script
 

@@ -2,6 +2,8 @@
 
 class CloudAdapterInterface:
 
+    ACTIONS = []
+
     def __init__(self, cloud, cred_provider=None):
         self._sdk = None
         self._sessions = {}

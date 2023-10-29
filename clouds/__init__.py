@@ -31,7 +31,7 @@ def set_credential_provider(debug=False):
 
 ### forward to the correct adapter
 
-# TODO: latest_imported_tags(...)
+# TODO: deprexcate/remove
 def get_latest_imported_tags(config):
     return ADAPTERS[config.cloud].get_latest_imported_tags(
         config.project,
@@ -49,3 +49,7 @@ def delete_image(config, image_id):
 
 def publish_image(config):
     return ADAPTERS[config.cloud].publish_image(config)
+
+# supported actions
+def actions(config):
+    return ADAPTERS[config.cloud].ACTIONS
