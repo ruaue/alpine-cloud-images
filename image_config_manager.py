@@ -144,15 +144,16 @@ class ImageConfigManager():
     def _set_version_release(self, v, c):
         info = self.alpine.version_info(v)
         c.put('release', info['release'])
-        c.put('end_of_life', info['end_of_life'])
         c.put('release_notes', info['notes'])
+        if 'end_of_life' not in c:
+            c.put('end_of_life', info['end_of_life'])
 
         # release is also appended to name & description arrays
         c.put('name', [c.release])
         c.put('description', [c.release])
 
     # update current config status
-    def refresh_state(self, step, only=[], skip=[], revise=False):
+    def refresh_state(self, step, disable=[], revise=False, only=[], skip=[]):
         self.log.info('Refreshing State')
         has_actions = False
         for ic in self._configs.values():
@@ -169,7 +170,7 @@ class ImageConfigManager():
                 self.log.debug('%s SKIPPED, matches --skip', ic.config_key)
                 continue
 
-            ic.refresh_state(step, revise)
+            ic.refresh_state(step, disable, revise)
             if not has_actions and len(ic.actions):
                 has_actions = True
 

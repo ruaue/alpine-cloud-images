@@ -11,7 +11,7 @@ import textwrap
 NOTE = textwrap.dedent("""
     This script's output provides a mustache-ready datasource to alpine-mksite
     (https://gitlab.alpinelinux.org/alpine/infra/alpine-mksite) and should be
-    run after the main 'build' script has published ALL images.
+    run after the main 'build' script has released ALL images.
     STDOUT from this script should be saved as 'cloud/releases.yaml' in the
     above alpine-mksite repo.
     """)
@@ -87,7 +87,7 @@ configs = ImageConfigManager(
     log='gen_mksite_releases'
 )
 # make sure images.yaml is up-to-date with reality
-configs.refresh_state('final')
+configs.refresh_state('final', skip=['edge'])
 
 yaml = YAML()
 
@@ -97,19 +97,22 @@ data = {}
 
 log.info('Transforming image data')
 for i_key, i_cfg in configs.get().items():
-    if not i_cfg.published:
+    if not i_cfg.released:
         continue
+
+    released = i_cfg.uploaded.split('T')[0]
 
     version = i_cfg.version
     if version == 'edge':
         continue
 
-    image_name = i_cfg.image_name
     release = i_cfg.release
     arch = i_cfg.arch
     firmware = i_cfg.firmware
     bootstrap = i_cfg.bootstrap
     cloud = i_cfg.cloud
+    # key on "variant" (but do not include cloud!)
+    variant = f"{release} {arch} {firmware} {bootstrap}"
 
     if cloud not in filters['clouds']:
         filters['clouds'][cloud] = {
@@ -140,15 +143,17 @@ for i_key, i_cfg in configs.get().items():
         'release': release,
         'end_of_life': i_cfg.end_of_life,
     }
-    versions[version]['images'][image_name] |= {
-        'image_name': image_name,
+    versions[version]['images'][variant] |= {
+        'variant': variant,
         'arch': arch,
         'firmware': firmware,
         'bootstrap': bootstrap,
-        'published': i_cfg.published.split('T')[0],     # just the date
+        #'released': i_cfg.released.split('T')[0],     # just the date
+        'released': released
     }
-    versions[version]['images'][image_name]['downloads'][cloud] |= {
+    versions[version]['images'][variant]['downloads'][cloud] |= {
         'cloud': cloud,
+        'image_name': i_cfg.image_name,
         'image_format': i_cfg.image_format,
         'image_url':  i_cfg.download_url + '/' + (i_cfg.image_name)
     }
@@ -168,7 +173,7 @@ for i_key, i_cfg in configs.get().items():
             if cloud not in filters['regions'][region]['clouds']:
                 filters['regions'][region]['clouds'].append(cloud)
 
-            versions[version]['images'][image_name]['regions'][region] |= {
+            versions[version]['images'][variant]['regions'][region] |= {
                 'cloud': cloud,
                 'region': region,
                 'region_url': i_cfg.region_url(region, image_id),
@@ -194,21 +199,21 @@ versions = undictfactory(versions)
 for version in sorted(versions, reverse=True, key=lambda s: [int(u) for u in s.split('.')]):
     images = versions[version].pop('images')
     i = []
-    for image_name in images:   # order as they appear in work/images.yaml
-        downloads = images[image_name].pop('downloads')
+    for variant in images:   # order as they appear in work/images.yaml
+        downloads = images[variant].pop('downloads')
         d = []
         for download in downloads:
             d.append(downloads[download])
 
-        images[image_name]['downloads'] = d
+        images[variant]['downloads'] = d
 
-        regions = images[image_name].pop('regions', [])
+        regions = images[variant].pop('regions', [])
         r = []
         for region in sorted(regions):
             r.append(regions[region])
 
-        images[image_name]['regions'] = r
-        i.append(images[image_name])
+        images[variant]['regions'] = r
+        i.append(images[variant])
 
     versions[version]['images'] = i
     data['versions'].append(versions[version])

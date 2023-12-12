@@ -37,7 +37,7 @@ from image_config_manager import ImageConfigManager
 
 ### Constants & Variables
 
-ACTIONS = ['local', 'upload', 'import', 'publish', 'release']
+ACTIONS = ['local', 'upload', 'import', 'sign', 'publish', 'release']
 LOGFORMAT = '%(name)s - %(levelname)s - %(message)s'
 
 
@@ -78,18 +78,21 @@ for image_key in args.image_keys:
     image_config = configs.get(image_key)
     image_config.load_local_metadata()  # if it exists
 
+    if args.action in ["import", "sign"] and not image_config.image_path.exists():
+        # if we don't have the image locally, retrieve it from storage
+        image_config.retrieve_image()
+
     if args.action == 'local':
         image_config.convert_image()
 
     elif args.action == 'upload':
         image_config.upload_image()
 
-    elif args.action == 'import' and 'import' in clouds.actions(image_config):
-        # if we don't have the image locally, retrieve it from storage
-        if not image_config.image_path.exists():
-            image_config.retrieve_image()
-
+    elif args.action == 'import':
         clouds.import_image(image_config)
+
+    elif args.action == 'sign':
+        image_config.sign_image()
 
     elif args.action == 'publish' and 'publish' in clouds.actions(image_config):
         clouds.publish_image(image_config)

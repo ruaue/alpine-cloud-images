@@ -48,7 +48,8 @@ from image_config_manager import ImageConfigManager
 
 ### Constants & Variables
 
-STEPS = ['configs', 'state', 'rollback', 'local', 'upload', 'import', 'publish', 'release']
+STEPS = ['configs', 'state', 'rollback', 'local', 'upload', 'import', 'sign', 'publish', 'release']
+DISABLEABLE = ['import', 'sign', 'publish']
 LOGFORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 WORK_CLEAN = {'bin', 'include', 'lib', 'pyvenv.cfg', '__pycache__'}
 WORK_OVERLAYS = ['configs', 'scripts']
@@ -62,6 +63,8 @@ UEFI_FIRMWARE = {
         'bin': 'usr/share/OVMF/OVMF.fd',
     }
 }
+PACKER_CACHE_DIR = 'work/packer_cache'
+PACKER_PLUGIN_PATH = 'work/packer_plugin'
 alpine = Alpine()
 
 
@@ -235,7 +238,8 @@ parser.add_argument(
     help='use the identity broker to get credentials')
 # packer options
 parser.add_argument(
-    '--no-color', action='store_true', help='turn off Packer color output')
+    '--color', default=True, action=argparse.BooleanOptionalAction,
+    help='turn on/off Packer color output')
 parser.add_argument(
     '--parallel', metavar='N', type=int, default=1,
     help='build N images in parallel')
@@ -245,6 +249,11 @@ parser.add_argument(
 # positional argument
 parser.add_argument(
     'step', choices=STEPS, help='build up to and including this step')
+# steps we may choose to not do
+parser.add_argument(
+    '--disable', metavar='STEP', nargs='+', action=remove_dupe_args(),
+    choices=DISABLEABLE, default=[], help='disable optional steps'
+)
 args = parser.parse_args()
 
 log = logging.getLogger('build')
@@ -259,6 +268,10 @@ log.debug(args)
 if args.step == 'rollback' and args.revise:
     log.error('"rollback" step does not support --revise option')
     sys.exit(1)
+
+if 'import' in args.disable and 'publish' not in args.disable:
+    log.warning('--disable import also implicitly disables publish')
+    args.disable.append('publish')
 
 # set up credential provider, if we're going to use it
 if args.use_broker:
@@ -288,7 +301,7 @@ if args.step == 'configs':
 ### What needs doing?
 
 if not image_configs.refresh_state(
-        step=args.step, only=args.only, skip=args.skip, revise=args.revise):
+        args.step, args.disable, args.revise, args.only, args.skip):
     log.info('No pending actions to take at this time.')
     sys.exit(0)
 
@@ -302,14 +315,32 @@ install_qemu_firmware()
 
 env = os.environ | {
     'TZ': 'UTC',
-    'PACKER_CACHE_DIR': 'work/packer_cache'
+    'PACKER_CACHE_DIR': PACKER_CACHE_DIR,
+    'PACKER_PLUGIN_PATH': PACKER_PLUGIN_PATH
 }
+
+if not os.path.exists(PACKER_PLUGIN_PATH):
+    packer_init_cmd = [ 'packer', 'init', '.' ]
+    log.info('Initializing Packer...')
+    log.debug(packer_init_cmd)
+    out = io.StringIO()
+    p = Popen(packer_init_cmd, stdout=PIPE, encoding='utf8', env=env)
+    while p.poll() is None:
+        text = p.stdout.readline()
+        out.write(text)
+        print(text, end="")
+
+    if p.returncode != 0:
+        log.critical('Packer Initialization Failure')
+        sys.exit(p.returncode)
+
+    log.info('Packer Initialized')
 
 packer_cmd = [
     'packer', 'build', '-timestamp-ui',
     '-parallel-builds', str(args.parallel)
 ]
-if args.no_color:
+if not args.color:
     packer_cmd.append('-color=false')
 
 if args.use_broker:
@@ -340,7 +371,7 @@ log.info('Packer Completed')
 
 # update final state in work/images.yaml
 image_configs.refresh_state(
-    step='final',
+    'final',
     only=args.only,
     skip=args.skip
 )

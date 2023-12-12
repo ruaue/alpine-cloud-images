@@ -1,5 +1,14 @@
 # Alpine Cloud Images Packer Configuration
 
+packer {
+  required_plugins {
+    qemu = {
+      source  = "github.com/hashicorp/qemu"
+      version = "~> 1"
+    }
+  }
+}
+
 ### Variables
 
 # include debug output from provisioning/post-processing scripts
@@ -31,7 +40,7 @@ variable "qemu" {
 locals {
   # possible actions for the post-processor
   actions = [
-    "local", "upload", "import", "publish", "release"
+    "local", "upload", "import", "sign", "publish", "release"
   ]
 
   debug_arg   = var.DEBUG == 0 ? "" : "--debug"

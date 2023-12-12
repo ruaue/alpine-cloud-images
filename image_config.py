@@ -23,16 +23,18 @@ class ImageConfig():
     }
     # these tags may-or-may-not exist at various times
     OPTIONAL_TAGS = [
-        'built', 'uploaded', 'imported', 'import_id', 'import_region', 'published', 'released'
+        'built', 'uploaded', 'imported', 'import_id', 'import_region',
+        'signed', 'published', 'released'
     ]
     STEPS = [
-        'local', 'upload', 'import', 'publish', 'release'
+        'local', 'upload', 'import', 'sign', 'publish', 'release'
     ]
     # we expect these to be available
     DEFAULT_OBJ = {
         'built': None,
         'uploaded': None,
         'imported': None,
+        'signed': None,
         'published': None,
         'released': None,
         'artifacts': None,
@@ -284,14 +286,14 @@ class ImageConfig():
             loaded.pop('Name', None)    # remove special AWS tag
             self.__dict__ |= loaded
 
-    def refresh_state(self, step, revise=False):
+    def refresh_state(self, step, disable=[], revise=False):
         log = self._log
         actions = {}
         undo = {}
 
         # enable initial set of possible actions based on specified step
         for s in self.STEPS:
-            if self._is_step_or_earlier(s, step):
+            if self._is_step_or_earlier(s, step) and s not in disable:
                 actions[s] = True
 
         # sets the latest revision metadata (from storage and local)
@@ -386,16 +388,6 @@ class ImageConfig():
 
         return self._storage
 
-    def _save_checksum(self, file):
-        self._log.info("Calculating checksum for '%s'", file)
-        sha512_hash = hashlib.sha512()
-        with open(file, 'rb') as f:
-            for block in iter(lambda: f.read(4096), b''):
-                sha512_hash.update(block)
-
-        with open(str(file) + '.sha512', 'w') as f:
-            print(sha512_hash.hexdigest(), file=f)
-
     # convert local QCOW2 to format appropriate for a cloud
     def convert_image(self):
         self._log.info('Converting %s to %s', self.local_image, self.image_path)
@@ -404,31 +396,62 @@ class ImageConfig():
             log=self._log, errmsg='Unable to convert %s to %s',
             errvals=[self.local_image, self.image_path]
         )
-        self._save_checksum(self.image_path)
+        #self._save_checksum(self.image_path)
         self.built = datetime.utcnow().isoformat()
 
     def upload_image(self):
-        self.storage.store(
-            self.image_file,
-            self.image_file + '.sha512'
-        )
+        self.storage.store(self.image_file, checksum=True)
         self.uploaded = datetime.utcnow().isoformat()
 
     def retrieve_image(self):
         self._log.info('Retrieving %s from storage', self.image_file)
-        self.storage.retrieve(
-            self.image_file
+        self.storage.retrieve(self.image_file #, checksum=True
         )
 
     def remove_image(self):
         self.storage.remove(
+            #self.image_file + '*',
+            #self.metadata_file + '*')
             self.image_file,
+            self.image_file + '.asc',
             self.image_file + '.sha512',
             self.metadata_file,
             self.metadata_file + '.sha512'
         )
 
+    def sign_image(self):
+        log = self._log
+        if 'signing_cmd' not in self.__dict__:
+            log.warning("No 'signing_cmd' set, not signing image.")
+            return
+
+        cmd = self.signing_cmd.format(file=self.image_path).split(' ')
+        log.info(f'Signing {self.image_file}...')
+        log.debug(cmd)
+        run(
+            cmd, log=log, errmsg='Unable to sign image: %s',
+            errvals=[self.image_file]
+        )
+        self.signed = datetime.utcnow().isoformat()
+        # TODO?: self.signed_by? self.signed_fingerprint?
+        self.storage.store(self.image_file + '.asc')
+
     def release_image(self):
+        log = self._log
+        if 'release_cmd' not in self.__dict__:
+            log.warning("No 'release_cmd' set, not releasing image.")
+            return
+
+        base=self.image_name
+        cmd = self.release_cmd.format(
+                **self.__dict__, v_version=self.v_version,
+                base=base
+            ).split(' ')
+        log.info(f'releasing {base}...')
+        run(
+            cmd, log=log, errmsg='Unable to release image: %s',
+            errvals=[self.image_name]
+        )
         self.released = datetime.utcnow().isoformat()
 
     def save_metadata(self, action):
@@ -442,12 +465,8 @@ class ImageConfig():
         }
         metadata_path = self.local_dir / self.metadata_file
         self._yaml.dump(metadata, metadata_path)
-        self._save_checksum(metadata_path)
         if action != 'local' and self.storage:
-            self.storage.store(
-                self.metadata_file,
-                self.metadata_file + '.sha512'
-            )
+            self.storage.store(self.metadata_file, checksum=True)
 
     def load_metadata(self, step):
         new = True

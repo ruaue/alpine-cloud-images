@@ -84,10 +84,10 @@ The build system consists of a number of components:
   import and publish operations
 
 ### Build Requirements
-* [Python](https://python.org) (3.9.7 is known to work)
-* [Packer](https://packer.io) (1.7.6 is known to work)
-* [QEMU](https://www.qemu.org) (6.1.0 is known to work)
-* cloud provider account(s)
+* [Python](https://python.org) (3.9.9 is known to work)
+* [Packer](https://packer.io) (1.9.4 is known to work)
+* [QEMU](https://www.qemu.org) (8.1.2 is known to work)
+* cloud provider account(s) _(for import/publish steps)_
 
 ### Cloud Credentials
 
@@ -111,7 +111,7 @@ usage: build [-h] [--debug] [--clean] [--pad-uefi-bin-arch ARCH [ARCH ...]]
          [--custom DIR [DIR ...]] [--skip KEY [KEY ...]] [--only KEY [KEY ...]]
          [--revise] [--use-broker] [--no-color] [--parallel N]
          [--vars FILE [FILE ...]]
-         {configs,state,rollback,local,upload,import,publish,release}
+         {configs,state,rollback,local,upload,import,sign,publish,release}
 
 positional arguments:   (build up to and including this step)
   configs   resolve image build configuration
@@ -120,25 +120,27 @@ positional arguments:   (build up to and including this step)
   local     build images locally
   upload    upload images and metadata to storage
 * import    import local images to cloud provider default region (*)
+  sign      cryptographically sign images
 * publish   set image permissions and publish to cloud regions (*)
   release   mark images as being officially relased
 
 (*) may not apply to or be implemented for all cloud providers
 
 optional arguments:
-  -h, --help              show this help message and exit
-  --debug                 enable debug output
-  --clean                 start with a clean work environment
+  -h, --help                show this help message and exit
+  --debug                   enable debug output
+  --clean                   start with a clean work environment
   --pad-uefi-bin-arch ARCH [ARCH ...]
-                          pad out UEFI firmware to 64 MiB ('aarch64')
-  --custom DIR [DIR ...]  overlay custom directory in work environment
-  --skip KEY [KEY ...]    skip variants with dimension key(s)
-  --only KEY [KEY ...]    only variants with dimension key(s)
-  --revise                bump revision and rebuild if published or released
-  --use-broker            use the identity broker to get credentials
-  --no-color              turn off Packer color output
-  --parallel N            build N images in parallel
-  --vars FILE [FILE ...]  supply Packer with -vars-file(s) (default: [])
+                            pad out UEFI firmware to 64 MiB ('aarch64')
+  --custom DIR [DIR ...]    overlay custom directory in work environment
+  --skip KEY [KEY ...]      skip variants with dimension key(s)
+  --only KEY [KEY ...]      only variants with dimension key(s)
+  --revise                  bump revision and rebuild if published or released
+  --use-broker              use the identity broker to get credentials
+  --no-color                turn off Packer color output
+  --parallel N              build N images in parallel
+  --vars FILE [FILE ...]    supply Packer with -vars-file(s) (default: [])
+  --disable STEP [STEP ...] disable optional steps (default: [])
 ```
 
 The `build` script will automatically create a `work/` directory containing a
@@ -173,13 +175,14 @@ only if they are _unpublished_ and _unreleased_.
 As _published_ and _released_ images can't be rolled back, `--revise` can be
 used to increment the _`revision`_ value to rebuild newly revised images.
 
-`local`, `upload`, `import`, `publish`, and `release` steps are orchestrated by
-Packer.  By default, each image will be processed serially; providing the
-`--parallel` argument with a value greater than 1 will parallelize operations.
-The degree to which you can parallelze `local` image builds will depend on the
-local build hardware -- as QEMU virtual machines are launched for each image
-being built.  Image `upload`, `import`, `publish`, and `release` steps are much
-more lightweight, and can support higher parallelism.
+`local`, `upload`, `import`, `publish`, `sign` , and `release` steps are
+orchestrated by Packer.  By default, each image will be processed serially;
+providing the `--parallel` argument with a value greater than 1 will
+parallelize operations.  The degree to which you can parallelze `local` image
+builds will depend on the local build hardware -- as QEMU virtual machines are
+launched for each image being built.  Image `upload`, `import`, `publish`,
+`sign`, and `release` steps are much more lightweight, and can support higher
+parallelism.
 
 The `local` step builds local images with QEMU, for those that are not already
 built locally or have already been imported.  Images are converted to formats
@@ -194,6 +197,9 @@ The `import` step imports the local images into the cloud providers' default
 regions, unless they've already been imported.  At this point the images are
 not available publicly, allowing for additional testing prior to publishing.
 
+The `sign` step will cryptographically sign the built image, using the command
+specified by the `signing_cmd` config value.
+
 The `publish` step copies the image from the default region to other regions,
 if they haven't already been copied there.  This step will always update
 image permissions, descriptions, tags, and deprecation date (if applicable)
@@ -203,7 +209,8 @@ in all regions where the image has been published.
 providers where this does not make sense (i.e.  NoCloud) or for those which
 it has not yet been coded.
 
-The `release` step simply marks the images as being fully released.  _(For the
+The `release` step simply marks the images as being fully released.  If there
+is a `release_cmd` specified, this is also executed, per image.  _(For the
 offical Alpine releases, we have a `gen_mksite_release.py` script to convert
 the image data to a format that can be used by https://alpinelinux.org/cloud.)_
 

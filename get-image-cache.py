@@ -142,7 +142,10 @@ for region in sorted(regions):
         last_launched_attr = image.describe_attribute(Attribute='lastLaunchedTime')['LastLaunchedTime']
         last_launched = last_launched_attr.get('Value', 'Never')
 
-        eol = time.strptime(image.deprecation_time ,'%Y-%m-%dT%H:%M:%S.%fZ') < now
+        eol = True
+        if not image.public:
+            # deprecation_time isn't set on private images
+            eol = time.strptime(image.deprecation_time, '%Y-%m-%dT%H:%M:%S.%fZ') < now
 
         # keep track of images
         data[region]['images'][id] = {

@@ -1,5 +1,7 @@
 # vim: ts=4 et:
 
+import copy
+import hashlib
 import shutil
 import os
 
@@ -63,18 +65,45 @@ class ImageStorage():
                 'user': url.username + '@' if url.username else '',
             })
 
-    def store(self, *files):
+    def _checksum(self, file, save=False):
         log = self.log
+        src = self.local
+        log.debug("Calculating checksum for '%s'", file)
+        sha512_hash = hashlib.sha512()
+        with open(src / file, 'rb') as f:
+            for block in iter(lambda: f.read(4096), b''):
+                sha512_hash.update(block)
+
+        checksum = sha512_hash.hexdigest()
+        if save:
+            log.debug("Saving '%s'", file + '.sha512')
+            with open(str(src / file) + '.sha512', 'w') as f:
+                print(checksum, file=f)
+
+        return checksum
+
+    def store(self, *files, checksum=False):
+        log = self.log
+        src = self.local
+        dest = self.remote
+
+        # take care of any globbing in file list
+        files = [Path(p).name for p in sum([glob(str(src / f)) for f in files], [])]
+
         if not files:
             log.debug('No files to store')
             return
 
-        src = self.local
-        dest = self.remote
+        if checksum:
+            log.info('Creating checksum(s) for %s', files)
+            for f in copy.copy(files):
+                self._checksum(f, save=True)
+                files.append(f + '.sha512')
+
+        log.info('Storing %s', files)
         if self.scheme == 'file':
             dest.mkdir(parents=True, exist_ok=True)
             for file in files:
-                log.info('Storing %s', dest / file)
                 shutil.copy2(src / file, dest / file)
 
             return
@@ -97,8 +126,9 @@ class ImageStorage():
             log=log, errmsg='Failed to store files'
         )
 
-    def retrieve(self, *files):
+    def retrieve(self, *files, checksum=False):
         log = self.log
+        # TODO? use list()
         if not files:
             log.debug('No files to retrieve')
             return
@@ -158,6 +188,7 @@ class ImageStorage():
 
     def remove(self, *files):
         log = self.log
+        # TODO? use list()
         if not files:
             log.debug('No files to remove')
             return
