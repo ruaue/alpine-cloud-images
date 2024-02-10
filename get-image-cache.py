@@ -42,7 +42,7 @@ import clouds
 CLOUDS = ['aws']
 LOGFORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 
-RE_ALPINE = re.compile(r'^alpine-')
+RE_ALPINE = re.compile(r'^(?:aws_)?alpine-')
 RE_RELEASE = re.compile(r'-(edge|[\d\.]+)-')
 RE_REVISION = re.compile(r'-r?(\d+)$')
 RE_STUFF = re.compile(r'(edge|[\d+\.]+)(?:_rc(\d+))?-(.+)-r?(\d+)$')
@@ -142,9 +142,8 @@ for region in sorted(regions):
         last_launched_attr = image.describe_attribute(Attribute='lastLaunchedTime')['LastLaunchedTime']
         last_launched = last_launched_attr.get('Value', 'Never')
 
-        eol = True
-        if not image.public:
-            # deprecation_time isn't set on private images
+        eol = None  # we don't know for sure, unless we have a deprecation time
+        if image.deprecation_time:
             eol = time.strptime(image.deprecation_time, '%Y-%m-%dT%H:%M:%S.%fZ') < now
 
         # keep track of images

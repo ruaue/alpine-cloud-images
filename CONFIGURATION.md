@@ -154,6 +154,12 @@ For the official Alpine Linux cloud images, this is set to
 When building custom images, you **MUST** override **AT LEAST** this setting to
 avoid image import and publishing collisions.
 
+### `userhost` string
+
+This is the remote _user_@_host_ that is used for storing state, uploading
+files, and releasing official images.  Currently used by `storage_url` and
+`release_cmd`.
+
 ### `name` array
 
 The ultimate contents of this array contribute to the overall naming of the
@@ -193,10 +199,24 @@ Directories (under `work/scripts/`) that contain additional data that the
 `scripts` will need.  Packer will copy these to the VM responsible for setting
 up the variant image.
 
-### `size` string
+### `disk_size` array
 
-The size of the image disk, by default we use `1G` (1 GiB).  This disk may (or
-may not) be further partitioned, based on other factors.
+The sum of this array is the size of the image disk, specified in MiB; this
+allows different dimension variants to "bump up" the size of the image if
+extra space is needed.
+
+### `image_format` string
+
+The format/extension of the disk image, i.e. `qcow2`, `vhd`, or `raw`.
+
+### `image_format_opts` string
+
+Some formats have additional options; currently `vhd/force-size` and
+`vhd/fixed_force-size` are defined.
+
+### `image_compress` string
+
+***TODO***
 
 ### `login` string
 
@@ -312,3 +332,23 @@ Currently, only the **aws** cloud module supports this.
 
 List of addtional repository keys to trust during the package installation phase.
 This allows pulling in custom apk packages by simple specifying the repository name in packages block.
+
+### `storage_url` string
+
+This is an URL that defines where the persistent state about images is stored,
+from `upload` through `release` steps (and beyond).  This allows one `build`
+session to pick up where another left off.  Currently, `ssh://` and `file://`
+URLs are supported.
+
+### `download_url` string
+
+This string is used for building download URLs for officially released images
+on the https://alpinelinux.org/cloud web page.
+
+### `signing_cmd` string
+
+Command template to cryptographically sign files.
+
+### `release_cmd` string
+
+Command template to complete the release of an image.

@@ -1,6 +1,5 @@
 # vim: ts=4 et:
 
-import hashlib
 import mergedeep
 import os
 import pyhocon
@@ -19,7 +18,19 @@ class ImageConfig():
 
     CONVERT_CMD = {
         'qcow2': ['ln', '-f'],
-        'vhd': ['qemu-img', 'convert', '-f', 'qcow2', '-O', 'vpc', '-o', 'force_size=on'],
+        'vhd': ['qemu-img', 'convert', '-f', 'qcow2', '-O', 'vpc'],
+        'raw': ['qemu-img', 'convert', '-f', 'qcow2', '-O', 'raw'],
+    }
+    CONVERT_OPTS = {
+        None: [],
+        'vhd/fixed_force-size': ['-o', 'subformat=fixed,force_size'],
+        'vhd/force-size': ['-o', 'force_size=on'],
+    }
+    COMPRESS_CMD = {
+        'bz2': ['bzip2', '-c']
+    }
+    DECOMPRESS_CMD = {
+        'bz2': ['bzip2', '-dc']
     }
     # these tags may-or-may-not exist at various times
     OPTIONAL_TAGS = [
@@ -112,7 +123,7 @@ class ImageConfig():
             'end_of_life': self.end_of_life,
             'firmware': self.firmware,
             'image_key': self.image_key,
-            'name': self.image_name,
+            'name': self.image_name.replace(self.cloud + '_', '', 1),
             'project': self.project,
             'release': self.release,
             'revision': self.revision,
@@ -163,6 +174,7 @@ class ImageConfig():
         self.name = '-'.join(self.name)
         self.description = ' '.join(self.description)
         self.repo_keys = ' '.join(self.repo_keys)
+        self._resolve_disk_size()
         self._resolve_motd()
         self._resolve_urls()
         self._stringify_repos()
@@ -171,6 +183,9 @@ class ImageConfig():
         self._stringify_dict_keys('kernel_modules', ',')
         self._stringify_dict_keys('kernel_options', ' ')
         self._stringify_dict_keys('initfs_features', ' ')
+
+    def _resolve_disk_size(self):
+        self.disk_size = str(sum(self.disk_size)) + 'M'
 
     def _resolve_motd(self):
         # merge release notes, as apporpriate
@@ -388,11 +403,19 @@ class ImageConfig():
 
         return self._storage
 
+    @property
+    def convert_opts(self):
+        if 'image_format_opts' in self.__dict__:
+            return self.CONVERT_OPTS[self.image_format_opts]
+
+        return []
+
     # convert local QCOW2 to format appropriate for a cloud
     def convert_image(self):
         self._log.info('Converting %s to %s', self.local_image, self.image_path)
         run(
-            self.CONVERT_CMD[self.image_format] + [self.local_image, self.image_path],
+            self.CONVERT_CMD[self.image_format] + self.convert_opts
+                + [self.local_image, self.image_path],
             log=self._log, errmsg='Unable to convert %s to %s',
             errvals=[self.local_image, self.image_path]
         )
@@ -400,18 +423,21 @@ class ImageConfig():
         self.built = datetime.utcnow().isoformat()
 
     def upload_image(self):
+        # TODO: compress here?  upload that instead
         self.storage.store(self.image_file, checksum=True)
         self.uploaded = datetime.utcnow().isoformat()
 
     def retrieve_image(self):
         self._log.info('Retrieving %s from storage', self.image_file)
-        self.storage.retrieve(self.image_file #, checksum=True
-        )
+        # TODO: try downloading compressed and decompressed?
+        self.storage.retrieve(self.image_file) #, checksum=True)
+        # TODO: decompress compressed if exists
 
     def remove_image(self):
         self.storage.remove(
             #self.image_file + '*',
             #self.metadata_file + '*')
+            # TODO: self.image_compressed, .asc, .sha512
             self.image_file,
             self.image_file + '.asc',
             self.image_file + '.sha512',
@@ -425,6 +451,7 @@ class ImageConfig():
             log.warning("No 'signing_cmd' set, not signing image.")
             return
 
+        # TODO: sign compressed file?
         cmd = self.signing_cmd.format(file=self.image_path).split(' ')
         log.info(f'Signing {self.image_file}...')
         log.debug(cmd)

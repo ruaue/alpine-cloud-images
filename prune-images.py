@@ -72,6 +72,7 @@ parser.add_argument('--really', action='store_true', help='really prune images')
 parser.add_argument('--cloud', choices=CLOUDS, required=True, help='cloud provider')
 parser.add_argument('--region', help='specific region, instead of all regions')
 # what to prune...
+parser.add_argument('--bad-name', action='store_true')
 parser.add_argument('--private', action='store_true')
 parser.add_argument('--edge-eol', action='store_true')
 parser.add_argument('--rc', action='store_true')
@@ -134,6 +135,12 @@ for region in sorted(regions):
 
     for id, image in images.items():
         name = image['name']
+
+        if args.bad_name and not name.startswith('alpine-'):
+            log.info(f"{region}\tBAD_NAME\t{name}")
+            removes[region][id] = image
+            summary[region]['BAD_NAME'][id] = name
+            continue
 
         if args.private and image['private']:
             log.info(f"{region}\tPRIVATE\t{name}")

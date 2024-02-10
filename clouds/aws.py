@@ -115,10 +115,12 @@ class AWSCloudAdapter(CloudAdapterInterface):
 
     # import an image
     # NOTE: requires 'vmimport' role with read/write of <s3_bucket>.* and its objects
-    def import_image(self, ic):
-        log = logging.getLogger('import')
-        description = ic.image_description
+    def import_image(self, ic, log=None):
+        # if we try reimport from publish, we already have a log going
+        if not log:
+            log = logging.getLogger('import')
 
+        description = ic.image_description
         session = self.session()
         s3r = session.resource('s3')
         ec2c = session.client('ec2')
@@ -205,7 +207,7 @@ class AWSCloudAdapter(CloudAdapterInterface):
                 }],
                 Description=description,
                 EnaSupport=True,
-                Name=ic.image_name,
+                Name=tags.name,
                 RootDeviceName='/dev/xvda',
                 SriovNetSupport='simple',
                 VirtualizationType='hvm',
@@ -258,9 +260,18 @@ class AWSCloudAdapter(CloudAdapterInterface):
             ic.project,
             ic.image_key,
         )
-        if not source_image:
-            log.error('No source image for %s', ic.image_key)
-            raise RuntimeError('Missing source imamge')
+        # TODO: might be the wrong source image?
+        if not source_image or source_image.name != ic.tags.name:
+            log.warning('No source image for %s, reimporting', ic.tags.name)
+            # TODO: try importing it again?
+            self.import_image(ic, log)
+            source_image = self.get_latest_imported_tags(
+                ic.project,
+                ic.image_key,
+            )
+            if not source_image or source_image.name != ic.tags.name:
+                log.error('No source image for %s', ic.tags.name)
+                raise RuntimeError('Missing source image')
 
         source_id = source_image.import_id
         source_region = source_image.import_region

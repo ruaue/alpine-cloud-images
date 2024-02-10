@@ -115,7 +115,7 @@ build {
 
       # results
       output_directory  = "work/images/${B.value.cloud}/${B.value.image_key}"
-      disk_size         = B.value.size
+      disk_size         = B.value.disk_size
       format            = "qcow2"
       vm_name           = "image.qcow2"
     }

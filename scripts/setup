@@ -3,6 +3,11 @@
 
 [ -z "$DEBUG" ] || [ "$DEBUG" = 0 ] || set -x
 
+CONSOLE=ttyS0
+if [ "$ARCH" = "aarch64" ] && [ "$CLOUD" != "aws" ]; then
+    CONSOLE=ttyAMA0
+fi
+
 export \
     DEVICE=/dev/vda \
     TARGET=/mnt \
@@ -140,14 +145,12 @@ install_extlinux() {
     #
     # Shorten timeout (1/10s), eliminating delays for instance launches.
     #
-    # ttyS0 is for EC2 Console "Get system log" and "EC2 Serial Console"
-    # features, whereas tty0 is for "Get Instance screenshot" feature.  Enabling
-    # the port early in extlinux gives the most complete output in the log.
+    # Enabling console port early in extlinux gives the most complete output.
     #
     # TODO: review for other clouds -- this may need to be cloud-specific.
     sed -Ei -e "s|^[# ]*(root)=.*|\1=LABEL=/|" \
         -e "s|^[# ]*(default_kernel_opts)=.*|\1=\"$KERNEL_OPTIONS\"|" \
-        -e "s|^[# ]*(serial_port)=.*|\1=ttyS0|" \
+        -e "s|^[# ]*(serial_port)=.*|\1=$CONSOLE|" \
         -e "s|^[# ]*(modules)=.*|\1=$KERNEL_MODULES|" \
         -e "s|^[# ]*(default)=.*|\1=virt|" \
         -e "s|^[# ]*(timeout)=.*|\1=1|" \
@@ -201,8 +204,9 @@ configure_system() {
         cat "$SETUP/fstab.grub-efi" >> "$TARGET/etc/fstab"
     fi
 
-    # Disable getty for physical ttys, enable getty for serial ttyS0.
-    sed -Ei -e '/^tty[0-9]/s/^/#/' -e '/^#ttyS0:/s/^#//' "$TARGET/etc/inittab"
+    # Disable getty for physical ttys, enable getty for serial console.
+    sed -Ei -e '/^tty[0-9]/s/^/#/' -e "s/ttyS0/$CONSOLE/g" \
+        -e "/^#$CONSOLE:/s/^#//" "$TARGET/etc/inittab"
 
     # setup sudo and/or doas
     if grep -q '^sudo$' "$TARGET/etc/apk/world"; then

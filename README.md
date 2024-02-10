@@ -11,16 +11,17 @@ own customized images.
 To get started with offical pre-built Alpine Linux cloud images, visit
 https://alpinelinux.org/cloud.  Currently, we build official images for the
 following cloud platforms...
-* AWS
+* Amazon Web Services (AWS)
+* Microsoft Azure
+* GCP (Google Cloud Platform)
+* OCI (Oracle Cloud Infrastructure)
+* NoCloud
 
-...we are working on also publishing offical images to other major cloud
-providers.
+Each image's name contains the Alpine version release, architecture, firmware,
+bootstrap, and image revision; a YAML metadata file containing these details
+and more is downloadable.
 
-Each published image's name contains the Alpine version release, architecture,
-firmware, bootstrap, and image revision.  These details (and more) are also
-tagged on the images...
-
-| Tag | Description / Values |
+| Key | Description / Values |
 |-----|----------------------|
 | name | `alpine-`_`release`_`-`_`arch`_`-`_`firmware`_`-`_`bootstrap`_`-r`_`revision`_ |
 | project | `https://alpinelinux.org/cloud` |
@@ -37,13 +38,15 @@ tagged on the images...
 | imported | image import timestamp |
 | import_id | imported image id |
 | import_region | imported image region |
+| signed | image signing timestamp |
 | published | image publication timestamp |
 | released | image release timestamp _(won't be set until second publish)_ |
 | description | image description |
 
-Although AWS does not allow cross-account filtering by tags, the image name can
-still be used to filter images.  For example, to get a list of available Alpine
-3.x aarch64 images in AWS eu-west-2...
+Published AWS images are also tagged with this data, but other AWS accounts
+can't read these tags.  However, the image name can still be used to filter
+images to find what you're looking for.  For example, to get a list of
+available Alpine 3.x aarch64 images in AWS eu-west-2...
 ```
 aws ec2 describe-images \
   --region eu-west-2 \
@@ -77,13 +80,15 @@ The build system consists of a number of components:
 * the `scripts/` directory, containing scripts and related data used to set up
   image contents during provisioning
 
-* the Packer `alpine.pkr.hcl`, which orchestrates build, import, and publishing
-  of images
+* the Packer `alpine.pkr.hcl`, which orchestrates the various build steps
+  from `local` and beyond.
 
 * the `cloud_helper.py` script that Packer runs in order to do cloud-specific
-  import and publish operations
+  per-image operations, such as image format conversion, upload, publishing,
+  etc.
 
 ### Build Requirements
+
 * [Python](https://python.org) (3.9.9 is known to work)
 * [Packer](https://packer.io) (1.9.4 is known to work)
 * [QEMU](https://www.qemu.org) (8.1.2 is known to work)
@@ -91,10 +96,13 @@ The build system consists of a number of components:
 
 ### Cloud Credentials
 
-By default, the build system relies on the cloud providers' Python API
+Importing and publishing images relies on the cloud providers' Python API
 libraries to find and use the necessary credentials, usually via configuration
 under the user's home directory (i.e. `~/.aws/`, `~/.oci/`, etc.) or or via
 environment variables (i.e. `AWS_...`, `OCI_...`, etc.)
+
+_Note that presently, importing and publishing to cloud providers is only
+supported for AWS images._
 
 The credentials' user/role needs sufficient permission to query, import, and
 publish images -- the exact details will vary from cloud to cloud.  _It is
@@ -178,7 +186,7 @@ used to increment the _`revision`_ value to rebuild newly revised images.
 `local`, `upload`, `import`, `publish`, `sign` , and `release` steps are
 orchestrated by Packer.  By default, each image will be processed serially;
 providing the `--parallel` argument with a value greater than 1 will
-parallelize operations.  The degree to which you can parallelze `local` image
+parallelize operations.  The degree to which you can parallelize `local` image
 builds will depend on the local build hardware -- as QEMU virtual machines are
 launched for each image being built.  Image `upload`, `import`, `publish`,
 `sign`, and `release` steps are much more lightweight, and can support higher
