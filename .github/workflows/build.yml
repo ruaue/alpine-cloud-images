@@ -28,7 +28,7 @@ jobs:
             wget https://download.qemu.org/qemu-7.2.8.tar.xz
             tar xvJf qemu-7.2.8.tar.xz
             cd qemu-7.2.8
-            ./configure --prefix=/usr  --sysconfdir=/etc --target-list=x86_64-softmmu,aarch64-softmmu --enable-slirp --disable-pa --localstatedir=/var 
+            ./configure --prefix=/usr  --sysconfdir=/etc --target-list=x86_64-softmmu --enable-slirp --disable-pa --localstatedir=/var 
             make -j$(nproc)
             sudo make install
             
