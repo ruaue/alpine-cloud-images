@@ -17,7 +17,7 @@ jobs:
           sudo apt update
           sudo apt upgrade -y
          
-      - name: install qemu from source
+      - name: install qemu 8.0.5 from source
         run: |
            set -eux
             sudo apt-get install -y ninja-build
