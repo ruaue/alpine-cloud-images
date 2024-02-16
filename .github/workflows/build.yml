@@ -25,9 +25,9 @@ jobs:
             sudo apt-get install -y libglib2.0-dev
             sudo apt-get install -y libpixman-1-dev
             sudo apt-get install -y libslirp-dev 
-            wget https://download.qemu.org/qemu-8.1.5.tar.xz
-            tar xvJf qemu-8.1.5.tar.xz
-            cd qemu-8.1.5
+            wget https://download.qemu.org/qemu-8.0.5.tar.xz
+            tar xvJf qemu-8.0.5.tar.xz
+            cd qemu-8.0.5
             ./configure --prefix=/usr  --sysconfdir=/etc --target-list=x86_64-softmmu --enable-slirp --disable-pa --localstatedir=/var 
             make -j$(nproc)
             sudo make install
